@@ -110,7 +110,7 @@ function handleGoogleStart(request, response) {
     return;
   }
 
-  const state = crypto.randomBytes(18).toString("hex");
+  const state = createOAuthState();
   const authUrl = new URL("https://accounts.google.com/o/oauth2/v2/auth");
   authUrl.searchParams.set("client_id", clientId);
   authUrl.searchParams.set("redirect_uri", redirectUri);
@@ -121,7 +121,11 @@ function handleGoogleStart(request, response) {
 
   response.writeHead(302, {
     Location: authUrl.toString(),
-    "Set-Cookie": cookie("google_oauth_state", state, { maxAge: 600, httpOnly: true }),
+    "Set-Cookie": cookie("google_oauth_state", state, {
+      maxAge: 600,
+      httpOnly: true,
+      secure: isHttpsRequest(request),
+    }),
   });
   response.end();
 }
@@ -137,7 +141,11 @@ async function handleGoogleCallback(request, requestUrl, response) {
     return;
   }
 
-  if (!state || state !== cookies.google_oauth_state) {
+  const hasValidState = Boolean(state) && (
+    state === cookies.google_oauth_state
+    || verifyOAuthState(state)
+  );
+  if (!hasValidState) {
     sendHtml(response, 400, setupPage("Google 로그인 요청 상태가 일치하지 않습니다. 다시 시도해 주세요."));
     return;
   }
@@ -202,8 +210,13 @@ async function handleGoogleCallback(request, requestUrl, response) {
       cookie("libcon_user", Buffer.from(JSON.stringify(sessionUser), "utf8").toString("base64url"), {
         maxAge: 60 * 60 * 24 * 7,
         httpOnly: true,
+        secure: isHttpsRequest(request),
       }),
-      cookie("google_oauth_state", "", { maxAge: 0, httpOnly: true }),
+      cookie("google_oauth_state", "", {
+        maxAge: 0,
+        httpOnly: true,
+        secure: isHttpsRequest(request),
+      }),
     ],
   });
   response.end();
@@ -404,6 +417,43 @@ function isValidGoogleClientId(clientId) {
   return /^[0-9]+-[a-z0-9_-]+\.apps\.googleusercontent\.com$/i.test(clientId);
 }
 
+function createOAuthState() {
+  const payload = `${Date.now()}.${crypto.randomBytes(18).toString("hex")}`;
+  const encodedPayload = Buffer.from(payload, "utf8").toString("base64url");
+  return `${encodedPayload}.${signOAuthState(encodedPayload)}`;
+}
+
+function verifyOAuthState(state) {
+  const [encodedPayload, signature] = String(state || "").split(".");
+  if (!encodedPayload || !signature) return false;
+
+  const expected = signOAuthState(encodedPayload);
+  const actualBuffer = Buffer.from(signature);
+  const expectedBuffer = Buffer.from(expected);
+  if (actualBuffer.length !== expectedBuffer.length) return false;
+  if (!crypto.timingSafeEqual(actualBuffer, expectedBuffer)) return false;
+
+  try {
+    const [timestamp] = Buffer.from(encodedPayload, "base64url").toString("utf8").split(".");
+    const age = Date.now() - Number(timestamp);
+    return Number.isFinite(age) && age >= 0 && age <= 10 * 60 * 1000;
+  } catch {
+    return false;
+  }
+}
+
+function signOAuthState(payload) {
+  const secret = getEnv("OAUTH_STATE_SECRET")
+    || getEnv("GOOGLE_CLIENT_SECRET")
+    || getEnv("GOOGLE_CLIENT_ID");
+  return crypto.createHmac("sha256", secret).update(payload).digest("base64url");
+}
+
+function isHttpsRequest(request) {
+  const forwardedProto = String(request.headers["x-forwarded-proto"] || "").split(",")[0].trim();
+  return forwardedProto === "https";
+}
+
 function googleRedirectUri(request) {
   return getEnv("GOOGLE_REDIRECT_URI") || googleRedirectUriFromHost(request.headers.host);
 }
@@ -415,7 +465,8 @@ function googleRedirectUriFromHost(host) {
 function cookie(name, value, options = {}) {
   const parts = [`${name}=${value}`, "Path=/", "SameSite=Lax"];
   if (options.httpOnly) parts.push("HttpOnly");
-  if (options.maxAge) parts.push(`Max-Age=${options.maxAge}`);
+  if (options.secure) parts.push("Secure");
+  if (Number.isFinite(options.maxAge)) parts.push(`Max-Age=${options.maxAge}`);
   return parts.join("; ");
 }
 
