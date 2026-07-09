@@ -1,0 +1,19 @@
+{
+  "name": "LIBCON - Library Conquest",
+  "short_name": "LIBCON",
+  "description": "도서관을 점령하는 독서 진영 앱",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#070a10",
+  "theme_color": "#070a10",
+  "icons": [
+    {
+      "src": "/assets/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
