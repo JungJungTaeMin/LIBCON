@@ -12,6 +12,8 @@ const dbPath = path.join(dataDir, "libcon-db.json");
 let supabaseStatus = isSupabaseConfigured() ? "configured" : "disabled";
 let relationalSupabaseWarned = false;
 let memoryDb = null;
+let dbHydrated = false;
+let dbHydrationPromise = null;
 
 const mimeTypes = {
   ".html": "text/html; charset=utf-8",
@@ -31,6 +33,10 @@ async function handleRequest(request, response) {
   }
 
   try {
+    if (requestUrl.pathname.startsWith("/api/")) {
+      await ensureDbHydrated();
+    }
+
     if (requestUrl.pathname === "/api/config") {
       const googleClientId = getEnv("GOOGLE_CLIENT_ID");
       sendJson(response, 200, {
@@ -1241,6 +1247,7 @@ function readDb() {
 
 function writeDb(db) {
   memoryDb = db;
+  dbHydrated = true;
   if (canWriteLocalData()) {
     ensureDataDir();
     fs.writeFileSync(dbPath, JSON.stringify(db, null, 2));
@@ -1296,6 +1303,23 @@ async function hydrateDbFromSupabase() {
   }
 
   await syncDbToSupabase(readDb());
+}
+
+async function ensureDbHydrated() {
+  if (!isSupabaseConfigured() || dbHydrated) return;
+  if (!dbHydrationPromise) {
+    dbHydrationPromise = hydrateDbFromSupabase()
+      .then(() => {
+        dbHydrated = true;
+      })
+      .catch((error) => {
+        console.warn(`Supabase hydrate skipped: ${error.message}`);
+      })
+      .finally(() => {
+        dbHydrationPromise = null;
+      });
+  }
+  await dbHydrationPromise;
 }
 
 async function hydrateDbFromRelational() {
