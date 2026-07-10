@@ -32,6 +32,7 @@ const state = {
   myTab: "books",
   myPage: 0,
   myPageInfo: { page: 0, size: 5, totalElements: 0 },
+  mySummary: { booksRead: 0, totalReadingMinutes: 0, contributionLibraries: 0 },
   expandedReviews: new Set(),
   config: null,
   configStatus: "idle",
@@ -775,7 +776,7 @@ function renderFactionRanks() {
 function renderMyPage() {
   const selectedFaction = factionById(state.selectedFaction);
   const displayName = state.authUser?.name || state.authUser?.email?.split("@")[0] || "독서가";
-  const totalMinutes = userSessions.reduce((sum, session) => sum + (Number(session.minutes) || 0), 0);
+  const summary = state.mySummary || {};
   return `
     <section class="screen profile-section">
       <div class="profile-main">
@@ -787,9 +788,9 @@ function renderMyPage() {
         <div class="exp">${formatNumber(state.exp)}<br><small class="muted">EXP</small></div>
       </div>
       <div class="stats">
-        <article class="stat-card"><span><strong>${formatNumber(userBooks.length)}</strong><span class="muted">독서 권수</span></span></article>
-        <article class="stat-card"><span><strong>${formatReadingTime(totalMinutes)}</strong><span class="muted">총 독서</span></span></article>
-        <article class="stat-card"><span><strong>${formatNumber(userContributions.length)}</strong><span class="muted">기여 도서관</span></span></article>
+        <article class="stat-card"><span><strong>${formatNumber(summary.booksRead)}</strong><span class="muted">독서 권수</span></span></article>
+        <article class="stat-card"><span><strong>${formatReadingTime(summary.totalReadingMinutes)}</strong><span class="muted">총 독서</span></span></article>
+        <article class="stat-card"><span><strong>${formatNumber(summary.contributionLibraries)}</strong><span class="muted">기여 도서관</span></span></article>
       </div>
       <div class="tabs" style="--count:3">
         <button class="tab-button ${state.myTab === "books" ? "active" : ""}" data-action="my-tab" data-tab="books">내 서재</button>
@@ -868,12 +869,19 @@ function renderMyContent() {
         const expanded = state.expandedReviews.has(reviewKey);
         const reviewClass = expanded ? "review review-toggle expanded" : "review review-clamp review-toggle";
         return `
-        <article class="book-card">
+        <article class="book-card reading-record-card">
           <span class="book-cover"><span class="book-icon"></span></span>
-          <span>
+          <span class="reading-record-body">
+            <span class="reading-record-top">
+              <span class="status pass">서재 등록</span>
+              <span class="small-text">${escapeHtml(formatDate(book.date))}</span>
+            </span>
             <h3>${escapeHtml(book.title)}</h3>
             <p class="small-text">${escapeHtml(book.author)} · ${escapeHtml(book.publisher)}</p>
-            <p class="small-text">${formatNumber(book.minutes)}분 읽음</p>
+            <p class="reading-record-meta">
+              <span>${formatNumber(book.minutes)}분</span>
+              <span>${escapeHtml(book.pages || "페이지 미입력")}</span>
+            </p>
             <button class="${reviewClass}" type="button" data-action="toggle-review" data-review-key="${escapeHtml(reviewKey)}" aria-expanded="${expanded ? "true" : "false"}">
               "${escapeHtml(book.review)}"
             </button>
@@ -887,13 +895,17 @@ function renderMyContent() {
 
 function renderContributionCard(library) {
   return `
-    <article class="book-card">
+    <article class="book-card reading-record-card">
       <span class="book-cover external-icon"><span class="library-icon"></span></span>
-      <span>
+      <span class="reading-record-body">
+        <span class="reading-record-top">
+          <span class="status pass">영향력 획득</span>
+          <span class="small-text">${escapeHtml(library.date ? formatDate(library.date) : "")}</span>
+        </span>
         <h3>${library.name}</h3>
         <p class="small-text">${library.address}</p>
-        <p class="review">
-          <span class="chip">거리 ${library.distance}</span>
+        <p class="reading-record-meta">
+          <span>${library.distance}</span>
         </p>
       </span>
     </article>
@@ -1364,6 +1376,11 @@ async function loadMyPageData({ force = false } = {}) {
     if (meResponse.ok) {
       const me = await meResponse.json();
       state.exp = me.exp || 0;
+      state.mySummary = {
+        booksRead: Number(me.summary?.booksRead) || 0,
+        totalReadingMinutes: Number(me.summary?.totalReadingMinutes) || 0,
+        contributionLibraries: Number(me.summary?.contributionLibraries) || 0,
+      };
       if (me.faction?.factionId) state.selectedFaction = me.faction.factionId;
     }
     const booksPayload = booksResponse.ok ? await booksResponse.json() : [];
@@ -1386,6 +1403,7 @@ async function loadMyPageData({ force = false } = {}) {
       name: row.library?.libraryName || "도서관",
       address: row.library?.address || "",
       distance: `${formatNumber(row.scoreDelta)} pt`,
+      date: row.createdAt || row.loggedAt || "",
     })));
     state.myDataStatus = "loaded";
     render();

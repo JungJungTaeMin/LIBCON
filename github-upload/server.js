@@ -1929,6 +1929,12 @@ function upsertUser(db, sessionUser, options = {}) {
 
 function serializeUser(user, db) {
   const faction = db.factions.find((item) => item.factionId === user.factionId);
+  const passedSessions = db.readingSessions.filter((session) => session.userId === user.userId && session.status === "VERIFICATION_PASSED");
+  const contributionLibraryCount = new Set(
+    db.influenceLogs
+      .filter((log) => log.userId === user.userId)
+      .map((log) => String(log.libraryId)),
+  ).size;
   return {
     userId: user.userId,
     factionId: user.factionId || null,
@@ -1941,6 +1947,11 @@ function serializeUser(user, db) {
       name: faction.name,
       color: faction.color,
     } : null,
+    summary: {
+      booksRead: passedSessions.length,
+      totalReadingMinutes: passedSessions.reduce((sum, session) => sum + (Number(session.durationMinutes) || 0), 0),
+      contributionLibraries: contributionLibraryCount,
+    },
     onboardingCompleted: Boolean(user.onboardingCompleted),
   };
 }
