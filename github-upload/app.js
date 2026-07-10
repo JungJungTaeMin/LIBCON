@@ -823,6 +823,10 @@ function renderPager(type) {
 }
 
 function renderMyContent() {
+  if (state.myDataStatus === "loading") {
+    return renderEmptyState("불러오는 중입니다", "마이페이지 정보를 최신 상태로 맞추고 있습니다.");
+  }
+
   if (state.myTab === "sessions") {
     if (!userSessions.length) {
       return renderEmptyState("독서 기록이 없습니다", "독서 인증에 성공하면 기록이 표시됩니다.");
@@ -1364,6 +1368,11 @@ async function loadFactions({ force = false } = {}) {
 async function loadMyPageData({ force = false } = {}) {
   if (!force && (state.myDataStatus === "loading" || state.myDataStatus === "loaded")) return;
   state.myDataStatus = "loading";
+  userBooks.splice(0, userBooks.length);
+  userSessions.splice(0, userSessions.length);
+  userContributions.splice(0, userContributions.length);
+  state.myPageInfo = { page: state.myPage, size: 5, totalElements: 0 };
+  render();
   try {
     const myQuery = new URLSearchParams({ page: String(state.myPage), size: "5" });
     const sessionQuery = new URLSearchParams({ page: String(state.myPage), size: "5" });
@@ -1383,11 +1392,7 @@ async function loadMyPageData({ force = false } = {}) {
       };
       if (me.faction?.factionId) state.selectedFaction = me.faction.factionId;
     }
-    const booksPayload = booksResponse.ok ? await booksResponse.json() : [];
-    if (state.myTab === "books") state.myPageInfo = pageInfo(booksPayload);
-    userBooks.splice(0, userBooks.length, ...contentRows(booksPayload));
     const sessionsPayload = sessionsResponse.ok ? await sessionsResponse.json() : [];
-    if (state.myTab === "sessions") state.myPageInfo = pageInfo(sessionsPayload);
     const sessions = contentRows(sessionsPayload);
     userSessions.splice(0, userSessions.length, ...sessions.map((session) => ({
       title: session.book?.title || `세션 #${session.sessionId}`,
@@ -1396,8 +1401,22 @@ async function loadMyPageData({ force = false } = {}) {
       pages: session.startPage && session.endPage ? `p.${session.startPage}-${session.endPage}` : "페이지 미입력",
       date: session.completedAt || session.createdAt || "",
     })));
+    const booksPayload = booksResponse.ok ? await booksResponse.json() : [];
+    const bookRows = contentRows(booksPayload);
+    const shelfRows = bookRows.length ? bookRows : sessions.map((session) => ({
+      bookId: session.book?.bookId || session.bookId || session.sessionId,
+      title: session.book?.title || `세션 #${session.sessionId}`,
+      author: session.book?.author || "",
+      publisher: session.book?.publisher || "",
+      coverImageUrl: session.book?.coverImageUrl || "",
+      minutes: session.durationMinutes || 0,
+      review: session.reviewText || session.verification?.reviewText || "",
+      library: session.library?.libraryName || "도서관",
+      pages: session.startPage && session.endPage ? `p.${session.startPage}-${session.endPage}` : "페이지 미입력",
+      date: session.completedAt || session.createdAt || "",
+    }));
+    userBooks.splice(0, userBooks.length, ...shelfRows);
     const contributionPayload = librariesResponse.ok ? await librariesResponse.json() : [];
-    if (state.myTab === "libraries") state.myPageInfo = pageInfo(contributionPayload);
     const contributionRows = contentRows(contributionPayload);
     userContributions.splice(0, userContributions.length, ...contributionRows.map((row) => ({
       name: row.library?.libraryName || "도서관",
@@ -1405,6 +1424,9 @@ async function loadMyPageData({ force = false } = {}) {
       distance: `${formatNumber(row.scoreDelta)} pt`,
       date: row.createdAt || row.loggedAt || "",
     })));
+    if (state.myTab === "books") state.myPageInfo = bookRows.length ? pageInfo(booksPayload) : pageInfo(sessionsPayload);
+    if (state.myTab === "sessions") state.myPageInfo = pageInfo(sessionsPayload);
+    if (state.myTab === "libraries") state.myPageInfo = pageInfo(contributionPayload);
     state.myDataStatus = "loaded";
     render();
   } catch {

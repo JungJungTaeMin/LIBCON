@@ -516,20 +516,22 @@ function handleUserBooks(request, requestUrl, response) {
   const db = readDb();
   const user = requireUser(request, response, db);
   if (!user) return;
-  const sessions = db.readingSessions.filter((session) => session.userId === user.userId && session.status === "VERIFICATION_PASSED");
+  const sessions = db.readingSessions
+    .filter((session) => session.userId === user.userId && session.status === "VERIFICATION_PASSED")
+    .sort((a, b) => String(b.completedAt || b.createdAt).localeCompare(String(a.completedAt || a.createdAt)));
   const rows = sessions.map((session) => {
     const book = db.books.find((item) => item.bookId === session.bookId) || {};
     const verification = db.aiVerifications.find((item) => item.sessionId === session.sessionId) || {};
     return {
-      bookId: book.bookId,
-      title: book.title,
-      author: book.author,
-      publisher: book.publisher,
-      coverImageUrl: book.coverImageUrl,
+      bookId: book.bookId || session.bookId || session.sessionId,
+      title: book.title || `세션 #${session.sessionId}`,
+      author: book.author || "",
+      publisher: book.publisher || "",
+      coverImageUrl: book.coverImageUrl || "",
       minutes: session.durationMinutes,
       review: verification.reviewText || "",
       library: libraryName(db, session.libraryId),
-      pages: `p.${session.startPage}-${session.endPage}`,
+      pages: session.startPage && session.endPage ? `p.${session.startPage}-${session.endPage}` : "페이지 미입력",
       date: session.completedAt || session.createdAt,
     };
   });
@@ -548,6 +550,7 @@ function handleUserSessions(request, requestUrl, response) {
       ...session,
       book: db.books.find((book) => book.bookId === session.bookId) || null,
       library: db.libraries.find((library) => String(library.libraryId) === String(session.libraryId)) || null,
+      verification: db.aiVerifications.find((verification) => verification.sessionId === session.sessionId) || null,
     }));
   sendJson(response, 200, paginateRows(rows, requestUrl));
 }
