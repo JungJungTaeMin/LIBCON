@@ -1671,6 +1671,7 @@ async function loadConfig() {
 async function loadCurrentUser() {
   if (state.authStatus === "loading" || state.authStatus === "loaded") return;
 
+  consumeAuthRedirectTokens();
   state.authStatus = "loading";
   try {
     const response = await fetchWithTimeout(await apiUrl("/api/auth/me"), {}, 6000);
@@ -1696,6 +1697,15 @@ async function loadCurrentUser() {
   } catch {
     state.authStatus = "idle";
   }
+}
+
+function consumeAuthRedirectTokens() {
+  const params = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+  const accessToken = params.get("accessToken");
+  const refreshToken = params.get("refreshToken");
+  if (!accessToken || !refreshToken) return;
+  saveTokens({ accessToken, refreshToken });
+  window.history.replaceState({}, "", `${window.location.pathname}${window.location.search}`);
 }
 
 async function syncSelectedFactionToServer({ silent = false, keepRankingStatus = false } = {}) {

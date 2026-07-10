@@ -342,9 +342,17 @@ async function handleGoogleCallback(request, requestUrl, response) {
     email: user.email,
     picture: user.picture || "",
   };
+  const db = readDb();
+  const localUser = upsertUser(db, sessionUser, { write: true });
+  const accessToken = createJwt(localUser.userId);
+  const refreshToken = createJwt(localUser.userId, "refresh");
+  const tokenHash = new URLSearchParams({
+    accessToken,
+    refreshToken,
+  }).toString();
 
   response.writeHead(302, {
-    Location: "/?auth=success",
+    Location: `/?auth=success#${tokenHash}`,
     "Set-Cookie": [
       cookie("libcon_user", Buffer.from(JSON.stringify(sessionUser), "utf8").toString("base64url"), {
         maxAge: 60 * 60 * 24 * 7,
