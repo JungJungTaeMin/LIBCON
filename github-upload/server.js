@@ -11,6 +11,7 @@ const dataDir = path.join(root, ".data");
 const dbPath = path.join(dataDir, "libcon-db.json");
 let supabaseStatus = isSupabaseConfigured() ? "configured" : "disabled";
 let relationalSupabaseWarned = false;
+let memoryDb = null;
 
 const mimeTypes = {
   ".html": "text/html; charset=utf-8",
@@ -1214,25 +1215,36 @@ function formatDistance(meters) {
 }
 
 function readDb() {
+  if (memoryDb) return memoryDb;
+  if (!canWriteLocalData()) {
+    memoryDb = createInitialDb();
+    return memoryDb;
+  }
   ensureDataDir();
   if (!fs.existsSync(dbPath)) {
     const initial = createInitialDb();
     fs.writeFileSync(dbPath, JSON.stringify(initial, null, 2));
+    memoryDb = initial;
     return initial;
   }
   try {
-    return {
+    memoryDb = {
       ...createInitialDb(),
       ...JSON.parse(fs.readFileSync(dbPath, "utf8")),
     };
+    return memoryDb;
   } catch {
-    return createInitialDb();
+    memoryDb = createInitialDb();
+    return memoryDb;
   }
 }
 
 function writeDb(db) {
-  ensureDataDir();
-  fs.writeFileSync(dbPath, JSON.stringify(db, null, 2));
+  memoryDb = db;
+  if (canWriteLocalData()) {
+    ensureDataDir();
+    fs.writeFileSync(dbPath, JSON.stringify(db, null, 2));
+  }
   syncDbToSupabase(db).catch((error) => {
     console.warn(`Supabase sync skipped: ${error.message}`);
   });
@@ -1279,8 +1291,7 @@ async function hydrateDbFromSupabase() {
   const rows = await response.json().catch(() => []);
   const remoteDb = rows?.[0]?.data;
   if (remoteDb && typeof remoteDb === "object") {
-    ensureDataDir();
-    fs.writeFileSync(dbPath, JSON.stringify({ ...createInitialDb(), ...remoteDb }, null, 2));
+    writeDb({ ...createInitialDb(), ...remoteDb });
     return;
   }
 
@@ -1329,8 +1340,7 @@ async function hydrateDbFromRelational() {
     userRankings: userRankings.map(fromUserRankingRow),
     factionRankings: factionRankings.map(fromFactionRankingRow),
   };
-  ensureDataDir();
-  fs.writeFileSync(dbPath, JSON.stringify(db, null, 2));
+  writeDb(db);
   supabaseStatus = "connected";
   return true;
 }
@@ -1781,6 +1791,10 @@ function supabaseRequest(pathAndQuery, options = {}) {
 
 function ensureDataDir() {
   if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
+}
+
+function canWriteLocalData() {
+  return process.env.VERCEL !== "1";
 }
 
 function createInitialDb() {
