@@ -13,13 +13,29 @@ Required values:
 ```env
 KAKAO_REST_API_KEY=
 KAKAO_JS_API_KEY=
+LIBRARY_API_KEY=
 GOOGLE_CLIENT_ID=
 GOOGLE_CLIENT_SECRET=
 GOOGLE_REDIRECT_URI=http://localhost:5173/api/auth/google/callback
+SUPABASE_URL=
+SUPABASE_SERVICE_ROLE_KEY=
 ```
 
 The `.env` file must contain real issued values, not only the variable names.
 Do not upload `.env` to GitHub.
+
+## Supabase Setup
+
+Run [docs/06-supabase-setup.sql](./docs/06-supabase-setup.sql) in the Supabase SQL editor.
+
+Then fill these server-only values in `.env`:
+
+```env
+SUPABASE_URL=https://YOUR_PROJECT_REF.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=YOUR_SERVICE_ROLE_KEY
+```
+
+When Supabase is configured, the server loads app state from Supabase on startup and syncs changes back to the `app_state` table. Without these values, it falls back to local `.data/libcon-db.json`.
 
 To edit local keys quickly, double-click:
 
